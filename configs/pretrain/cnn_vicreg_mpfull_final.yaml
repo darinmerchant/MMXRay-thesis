@@ -1,0 +1,42 @@
+# CNN encoder + VICReg on full-MP — ported verbatim from the old repo's real
+# tuned run (PDF_XRD_Fusion/PDF/Models/Final/cnn_vicreg_sim25.0_var25.0_cov50.0_
+# mpfull_20260710_123913/config.json + Experiments/03_ssl_augmented/slurm/
+# job_mpfull.sh). cov_weight=50 (not losses.py's 25/25/1 default) and
+# proj_dim=512 (not TrainConfig's 128 default) are DELIBERATE picks from that
+# repo's earlier "exp16" tuning — not this session's defaults.
+#
+# RUNNABLE (session 24): both prior gates are cleared. Full-MP is banked
+# (`data/banked/material_registry_mpfull__n32__55ad1ff1`, verified s23) and
+# `core/train.py --resume` landed, so 300 epochs no longer needs one
+# allocation — launch via scripts/train_mpfull_final.slurm, which resumes a
+# task in place across requeues.
+#
+# GPU/env (CORRECTED session 17): run under SuperCloud's own
+# `conda/Python-ML-2026a-pytorch` module (torch 2.5.1 / CUDA 12.4), exactly as
+# scripts/train_loss_sweep.slurm does -- NOT a CUDA wheel in our `mmx` env. That
+# install was attempted and FAILED with "Disk quota exceeded"; the module costs
+# no disk and needs no diffpy, which a banked run never calls. xeon-g6-volta
+# (V100) matches the old job's --gres=gpu:volta:1, so amp:true is safe.
+
+bank: data/banked/material_registry_mpfull__n32__55ad1ff1
+
+encoder: cnn
+loss: vicreg
+
+latent_dim: 256
+proj_dim: 512
+
+sim_weight: 25.0
+var_weight: 25.0
+cov_weight: 50.0
+
+epochs: 300
+warmup_epochs: 8
+batch_size: 1024
+lr: 1.4e-4
+weight_decay: 0.01
+grad_clip: 5.0
+num_workers: 8
+seed: 42
+
+amp: true

@@ -1,0 +1,38 @@
+# CNN encoder + InfoNCE on full-MP — ported verbatim from the old repo's real
+# tuned run (PDF_XRD_Fusion/PDF/Models/Final/cnn_infonce_temp0.1_mpfull_
+# 20260710_123913/config.json + Experiments/03_ssl_augmented/slurm/
+# job_mpfull.sh). temperature=0.1 (not losses.py's 0.07 default) and
+# proj_dim=512 (not TrainConfig's 128 default) are DELIBERATE picks from that
+# repo's earlier "exp16" tuning -- not this session's defaults.
+#
+# RUNNABLE (session 24) -- see cnn_vicreg_mpfull_final.yaml's header for how
+# the two prior gates (full-MP bank + --resume) were cleared. Launch via
+# scripts/train_mpfull_final.slurm.
+#
+# GPU/env (CORRECTED session 17): run under SuperCloud's own
+# `conda/Python-ML-2026a-pytorch` module (torch 2.5.1 / CUDA 12.4), exactly as
+# scripts/train_loss_sweep.slurm does -- NOT a CUDA wheel in our `mmx` env. That
+# install was attempted and FAILED with "Disk quota exceeded"; the module costs
+# no disk and needs no diffpy, which a banked run never calls. xeon-g6-volta
+# (V100) matches the old job's --gres=gpu:volta:1, so amp:true is safe.
+
+bank: data/banked/material_registry_mpfull__n32__55ad1ff1
+
+encoder: cnn
+loss: infonce
+
+latent_dim: 256
+proj_dim: 512
+
+temperature: 0.1
+
+epochs: 300
+warmup_epochs: 8
+batch_size: 1024
+lr: 1.4e-4
+weight_decay: 0.01
+grad_clip: 5.0
+num_workers: 8
+seed: 42
+
+amp: true

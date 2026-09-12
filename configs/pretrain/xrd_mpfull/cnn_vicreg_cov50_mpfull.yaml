@@ -1,0 +1,51 @@
+# CNN + VICReg (cov 50.0) on the banked FULL-MP XRD block — the XRD arm's mpfull sweep.
+#
+# This is configs/pretrain/xrd_loss_sweep/cnn_vicreg_cov50.yaml (the MP-20 cell)
+# re-pointed at the full-MP bank and given the full-MP TRAINING RECIPE the PDF
+# *_mpfull_final runs use. All 9 sweep cells were re-pointed, so every MP-20 XRD
+# sweep point has a full-MP twin (Darin's calls, 2026-08-12).
+#
+# Exactly six fields differ from the MP-20 cell — asserted by a load_config diff
+# over all 9 pairs before submission:
+#   * bank          — the verified full-MP XRD block (4,269,440 views, 85.4 GB,
+#                     verify_bank --resim 20 ALL PASS). Its meta.json carries
+#                     `modality: xrd`, which is what makes the read path
+#                     max-normalize rather than min-max.
+#   * out_dir       — runs/xrd/pretrain_mpfull, a tree of its own: five analysis modules
+#                     bucket runs by TREE, and a corpus is not a sweep axis.
+#   * epochs        200 -> 300     ┐ the PDF mpfull_final recipe, ported from the
+#   * batch_size    512 -> 1024    │ old repo's job_mpfull.sh via
+#   * lr            1e-4 -> 1.4e-4 │ configs/pretrain/cnn_vicreg_mpfull_final.yaml
+#   * warmup_epochs 5 -> 8         ┘
+#
+# ⚠️ The recipe changes WITH the corpus, so runs/xrd/pretrain_mpfull vs runs/xrd/pretrain is
+# corpus + recipe — NOT a clean corpus contrast, and must not be quoted as one.
+# What it is clean against is the PDF mpfull arm (runs/pdf/sweep/*_mpfull_final), which
+# trains under this same recipe: that is the PDF-vs-XRD comparison at full MP.
+#
+# The loss hyperparameter below is the sweep axis and is unchanged from the
+# MP-20 cell. Fields left unset (grad_clip 5.0, num_workers 8, seed 42, amp true)
+# resolve to the same values the mpfull_final configs state explicitly.
+#
+# ENV: SuperCloud's `conda/Python-ML-2026a-pytorch` module, not `mmx` (torch CPU);
+# a banked run never simulates, so diffpy is not needed. Launch via
+# scripts/xrd_mpfull.slurm, which resumes a cancelled task in place.
+
+bank: data/banked/xrd__material_registry_mpfull__n32__ebd360d9
+
+encoder: cnn
+loss: vicreg
+sim_weight: 25.0
+var_weight: 25.0
+cov_weight: 50.0
+
+epochs: 300
+batch_size: 1024
+lr: 1.4e-4
+weight_decay: 1.0e-2
+warmup_epochs: 8
+latent_dim: 256
+proj_dim: 512
+
+signal_len: 4999
+out_dir: runs/xrd/pretrain_mpfull

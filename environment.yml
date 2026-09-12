@@ -1,0 +1,67 @@
+# MMXRay — pinned, reproducible environment (single source of truth).
+#
+# Works on macOS (Apple Silicon) and Linux (MIT SuperCloud login node).
+# See docs/ENVIRONMENT.md for the exact per-platform setup + verification steps.
+#
+# The one hard part is diffpy: it has a COMPILED backend (libdiffpy). A build
+# that merely imports can still crash at call time with an ABI/rpath error, so
+# the compiled pieces come from conda-forge and are pinned around a known-good
+# set (numpy 1.26 / libdiffpy 1.4.1 / diffpy.srreal 1.4.0). numpy MUST stay <2:
+# both diffpy.srreal and torch 2.2.2 are built against the numpy-1.x ABI.
+#
+# torch is pip, not conda: conda-forge has no pytorch 2.2.2 build for osx-arm64
+# (it jumps to 2.12 cpu_generic, which drags in numpy 2 and breaks diffpy). The
+# pip wheel is the known-good one and honours the numpy 1.26.4 already present.
+# This is a CPU build — enough for the registry/simulator/smoke tests. GPU torch
+# for SuperCloud training is a documented add-on (docs/ENVIRONMENT.md), not here.
+
+name: mmxray
+
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  - python=3.11
+  # --- pinned numpy: the hinge the whole compiled stack balances on (<2) ---
+  - numpy=1.26.4
+  # --- data I/O ---
+  - pandas=3.0.*
+  - pyarrow=24.*          # parquet backend for the registry
+  - requests              # download-once in data/builders/mp20.py
+  - h5py                  # data/builders/mp_full.py: reads the MP-2019 dump (data.hdf5)
+  - pyyaml                # core/config.py: configs/pretrain/*.yaml -> TrainConfig
+  # Classification head + F1 metrics in analysis/downstream_eval.py. PINNED to the
+  # 1.5 series on purpose: conda-forge's scikit-learn >= 1.8 ships `np2*` builds
+  # compiled against the numpy-2 ABI, which the solver will happily install ALONGSIDE
+  # the numpy 1.26.4 pinned above — the same import-fine/crash-at-call-time trap
+  # described in the header for diffpy. 1.5.2 is the newest numpy-1.x-era build.
+  - scikit-learn=1.5.*
+  # --- plotting ---
+  - matplotlib-base=3.10.*
+  # --- materials / crystallography ---
+  - pymatgen=2024.8.*     # from pymatgen.core: Structure, Lattice (CIF parse/build)
+  # --- diffpy compiled stack (the "diffpy-cmi" pieces we actually import) ---
+  - diffpy.structure=3.3.*
+  - diffpy.srreal=1.4.*   # pulls libdiffpy + libboost-python transitively
+  # --- torch_geometric: pure-python noarch; chili builder uses only Data ---
+  - pytorch_geometric=2.6.*
+  # --- debyecalculator's real deps (it is installed --no-deps below) ---
+  - ase                   # chemical_symbols + the Atoms type debyecalculator imports
+  - ipywidgets            # imported at its module top level, for .interact() we never call
+  - pip
+  - pip:
+      # torch 2.2.2 CPU wheel — known-good, honours numpy 1.26.4 (see header).
+      - torch==2.2.2
+
+# --- POST-INSTALL, one manual step (NOT in the pip: block above) ---------------
+#     pip install --no-deps debyecalculator==1.0.14
+# Debye sum over a finite nanoparticle (modalities/pdf/debye.py; one caller,
+# tools/augment_chili.py). It must be --no-deps: its dependency list drags in the
+# whole Jupyter notebook-6 server stack (~70 packages) for a widget mode we never
+# call, and pins ase/prettytable versions that conflict with current ones. It
+# cannot live in the pip: block because conda applies flags there to the WHOLE
+# section, which would install torch --no-deps and silently break it.
+# The real deps (ase, ipywidgets) are conda packages above. pip will print
+# version-conflict warnings; they are cosmetic — the compute path is pinned by the
+# golden test in tests/test_augment_chili.py.
