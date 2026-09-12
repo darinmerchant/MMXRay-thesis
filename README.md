@@ -22,7 +22,8 @@ Included:
 Not included, and not distributed with this repository:
 
 - raw data (see *Data* for where each dataset comes from)
-- banked simulated views, registries, and checkpoints; each is rebuilt by a command below
+- banked simulated views and registries; each is rebuilt by a command below
+- checkpoints other than the two encoders the thesis reports, which are released under `checkpoints/`
 - run outputs; every command writes under `runs/`, which is ignored by git
 
 Scripts were copied verbatim from the working repository. Their docstrings sometimes cite files that live only there (`RESULTS.md`, `PROGRESS.md`, `docs/TRAPS.md`) and session numbers. Those references are the working history of the project and can be ignored here.
@@ -34,6 +35,7 @@ Scripts were copied verbatim from the working repository. Their docstrings somet
 | `core/` | registry format, splits, simulate-transform, two-view datasets, encoders, losses, config, training loop |
 | `modalities/pdf/`, `modalities/xrd/` | the PDF and XRD simulators (periodic via diffpy or pymatgen, finite particles via the Debye sum) and the fixed signal grids |
 | `data/builders/` | one builder per dataset: full Materials Project, CHILI-3K, CHILI-100K, RRUFF |
+| `checkpoints/` | the pretrained PDF and XRD encoders the thesis reports, each with its resolved config and per-epoch metrics |
 | `configs/pretrain/` | the PDF pretraining config, the XRD pretraining config, and the config the supervised baseline borrows for its architecture |
 | `tools/` | banking simulated views, augmenting CHILI-3K, the prediction store for the parity figures, and the figure scripts that read data or registries |
 | `analysis/` | the downstream readouts, the representation analyses, and the figure scripts that read trained runs |
@@ -107,7 +109,34 @@ python -m core.train --config configs/pretrain/xrd_mpfull/cnn_vicreg_cov50_mpful
 python -m core.train --resume runs/pdf/sweep/<run dir>                                 # continue an interrupted run in place
 ```
 
-The thesis reports one PDF encoder and one XRD encoder. Several downstream and figure scripts name the PDF run directory as a constant, `2026-07-30_152128_cnn_vicreg_mpfull_final_5bfa372`, because that is the run the thesis used. A fresh pretraining run gets a different name; either rename the run directory to that constant or edit the constant in the scripts that carry it.
+The thesis reports one PDF encoder and one XRD encoder, and both are released in this repository, so pretraining does not have to be repeated to reproduce anything downstream.
+
+## Pretrained weights
+
+`checkpoints/` holds the two encoders, each in a directory named after its original run, with the weights, the resolved training config, and one metrics line per epoch:
+
+| Directory | Encoder | Trained on |
+|---|---|---|
+| `2026-07-30_152128_cnn_vicreg_mpfull_final_5bfa372` | PDF, CNN + VICReg, 1.56 M parameters | 32 banked PDF views of 133,420 Materials Project structures, 300 epochs |
+| `2026-08-12_165057_cnn_vicreg_cov50_mpfull_be24b0e` | XRD, CNN + VICReg, 1.56 M parameters | 32 banked XRD views of the same structures, 300 epochs |
+
+`ckpt_best.pt` is a dictionary with `model_state` (encoder and projection head), `config` (the resolved training config), `epoch`, and the final loss terms. The encoder expects a PDF as 5,000 points of G(r) on the grid in `modalities/pdf/simulate.py`, or an XRD pattern as 4,999 points on the grid in `modalities/xrd/grid.py`, normalized as `core/transforms.py` does. The representation is the 256-dimensional output of `model.encode`, before the projection head.
+
+```python
+from analysis.downstream_eval import load_encoder, embed
+model, cfg, epoch = load_encoder("checkpoints/2026-07-30_152128_cnn_vicreg_mpfull_final_5bfa372/ckpt_best.pt", device="cpu")
+h = embed(model, X, "cpu")   # X: float tensor of shape (N, 5000) -> h: (N, 256)
+```
+
+The downstream and figure scripts look for the runs under `runs/`, at the paths the thesis used. Two symlinks make the released encoders visible there without editing any script:
+
+```bash
+mkdir -p runs/pdf/sweep runs/xrd/pretrain_mpfull
+ln -s ../../../checkpoints/2026-07-30_152128_cnn_vicreg_mpfull_final_5bfa372 runs/pdf/sweep/
+ln -s ../../../checkpoints/2026-08-12_165057_cnn_vicreg_cov50_mpfull_be24b0e runs/xrd/pretrain_mpfull/
+```
+
+Readouts then write their JSON into the checkpoint directories through the links, which is where the figure scripts read them. A fresh pretraining run gets a new directory name of its own; to use it with the figure scripts, edit the run-name constant in the scripts that carry it.
 
 ## Downstream runs behind the results
 
